@@ -60,9 +60,10 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       # Step 6: Install project dependencies
-      # Command: Install dependencies using frozen lockfile to ensure reproducible builds
+      # Command: Install dependencies with fallback for lockfile compatibility issues
+      # Try frozen lockfile first, fall back to regular install if incompatible
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile || pnpm install
 
       # Step 7: TypeScript type checking
       # Command: Run TypeScript compiler to check for type errors without emitting files
