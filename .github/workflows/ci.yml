@@ -8,6 +8,7 @@ on:
   # Trigger on pull requests targeting main and develop branches
   pull_request:
     branches: [main, develop]
+    types: [opened, synchronize]
 
 jobs:
   # Job: Continuous Integration Tests
