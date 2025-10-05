@@ -17,9 +17,10 @@ jobs:
 
     # Strategy: Matrix build to test on multiple Node.js versions
     # This ensures the application works on different Node.js environments
+    # Note: Using Node 20.19+ and 22.12+ as required by Vite 7.1.9
     strategy:
       matrix:
-        node-version: [18.x, 20.x]  # Test on Node 18 and 20
+        node-version: ['20.19', '22.12']  # Minimum versions required by Vite 7
 
     steps:
       # Step 1: Get the repository code
@@ -87,9 +88,9 @@ jobs:
 
       # Step 11: Upload build artifacts
       # Action: actions/upload-artifact@v4 - Save build output for potential use in other jobs
-      # Conditional: Only upload artifacts from Node 20.x to avoid duplicates
+      # Conditional: Only upload artifacts from Node 22.12 to avoid duplicates (latest version)
       - name: Upload build artifacts
-        if: matrix.node-version == '20.x'
+        if: matrix.node-version == '22.12'
         uses: actions/upload-artifact@v4
         with:
           name: build-files
