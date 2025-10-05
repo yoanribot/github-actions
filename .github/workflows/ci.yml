@@ -1,0 +1,96 @@
+name: CI
+
+# Workflow triggers
+on:
+  # Trigger on pushes to main and develop branches
+  push:
+    branches: [main, develop]
+  # Trigger on pull requests targeting main and develop branches
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # Job: Continuous Integration Tests
+  # Purpose: Run comprehensive tests across multiple Node.js versions to ensure compatibility
+  test:
+    runs-on: ubuntu-latest
+
+    # Strategy: Matrix build to test on multiple Node.js versions
+    # This ensures the application works on different Node.js environments
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]  # Test on Node 18 and 20
+
+    steps:
+      # Step 1: Get the repository code
+      # Action: actions/checkout@v4 - Downloads repository content to the runner
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      # Action: actions/setup-node@v4 - Installs specified Node.js version from matrix
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # Step 3: Set up pnpm package manager
+      # Action: pnpm/action-setup@v4 - Installs pnpm for faster, more efficient package management
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # Step 4: Configure pnpm cache location
+      # Command: Get pnpm store path and save it as environment variable for caching
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      # Step 5: Set up dependency caching
+      # Action: actions/cache@v4 - Cache pnpm store to speed up subsequent runs
+      # Cache key is based on OS and lockfile hash, ensuring cache invalidation when dependencies change
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # Step 6: Install project dependencies
+      # Command: Install dependencies using frozen lockfile to ensure reproducible builds
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Step 7: TypeScript type checking
+      # Command: Run TypeScript compiler to check for type errors without emitting files
+      - name: Run TypeScript type check
+        run: pnpm run build --mode=type-check || npx tsc --noEmit
+
+      # Step 8: Code linting
+      # Command: Run ESLint to check for code quality issues and style violations
+      - name: Run linter
+        run: pnpm run lint
+
+      # Step 9: Run test suite
+      # Command: Execute Jest tests to ensure functionality works correctly
+      - name: Run tests
+        run: pnpm run test
+
+      # Step 10: Build application
+      # Command: Create production build to verify the app can be built successfully
+      - name: Build application
+        run: pnpm run build
+
+      # Step 11: Upload build artifacts
+      # Action: actions/upload-artifact@v4 - Save build output for potential use in other jobs
+      # Conditional: Only upload artifacts from Node 20.x to avoid duplicates
+      - name: Upload build artifacts
+        if: matrix.node-version == '20.x'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: dist/              # Upload the built application
+          retention-days: 7        # Keep artifacts for 7 days
