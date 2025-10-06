@@ -70,6 +70,61 @@ jobs:
       - name: Run linter
         run: pnpm run lint
 
+    # Job: Code Quality Analysis
+  # Purpose: Generate code coverage reports and perform static code analysis
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Get the repository code
+      # Action: actions/checkout@v4 - Downloads repository content including full git history for SonarCloud
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      # Action: actions/setup-node@v4 - Installs Node.js 20.19+ for Vite 7 compatibility
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19'  # Minimum version required by Vite 7
+
+      # Step 3: Set up pnpm package manager
+      # Action: pnpm/action-setup@v4 - Installs pnpm for efficient package management
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # Step 4: Configure pnpm cache location
+      # Command: Get pnpm store path and save it as environment variable for caching
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      # Step 5: Set up dependency caching
+      # Action: actions/cache@v4 - Cache pnpm store to speed up builds
+      # Cache key includes lockfile hash to ensure cache invalidation when dependencies change
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # Step 6: Install project dependencies
+      # Command: Install dependencies with fallback for lockfile compatibility issues
+      # Try frozen lockfile first, fall back to regular install if incompatible
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      # Step 7: Run tests with coverage reporting
+      # Command: Execute Jest tests and generate coverage reports (LCOV, HTML)
+      # --coverage: Generate coverage reports
+      # --watchAll=false: Run tests once and exit (don't watch for changes)
+      - name: Run tests with coverage
+        run: pnpm run test -- --coverage --watchAll=false
+
   # Job 2: Testing
   # Purpose: Run comprehensive tests across multiple Node.js versions
   test:

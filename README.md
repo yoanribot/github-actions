@@ -87,11 +87,11 @@ export default defineConfig([
 - Run actions in parallel
 - [TODO] Add E2E or integrations tests
   - Playwright
-  - Cypress: [Ex](https://youtu.be/sIhm4YOMK6Q?t=2827)
+  - Cypress:
 - Cancel previous redundant build
 - Use `pnpm install --frozen-lockfile` for better performance (similar to npm ci)
 - Check the [Github marketplace](https://github.com/marketplace) for community reusable jobs and actions
-- Use secrets and tokens [Ex](https://youtu.be/sIhm4YOMK6Q?t=3514): Good to create config variables per environments
+- Use secrets and token. Good to create config variables per environments
 
 ### Examples
 

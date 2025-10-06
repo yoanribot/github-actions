@@ -96,7 +96,14 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
-      # Step 10: Build application
+      # Step 10: Run tests with coverage reporting
+      # Command: Execute Jest tests and generate coverage reports (LCOV, HTML)
+      # --coverage: Generate coverage reports
+      # --watchAll=false: Run tests once and exit (don't watch for changes)
+      - name: Run tests with coverage
+        run: pnpm run test -- --coverage --watchAll=false
+
+      # Step 11: Build application
       # Command: Create production build to verify the app can be built successfully
       # Build with GitHub Pages configuration for potential deployment
       - name: Build application
@@ -106,7 +113,7 @@ jobs:
           # This ensures the build is ready for deployment without rebuilding
           VITE_BASE_PATH: /github-actions/
 
-      # Step 11: Upload build artifacts
+      # Step 12: Upload build artifacts
       # Action: actions/upload-artifact@v4 - Save build output for potential deployment
       # Conditional: Only upload artifacts from Node 22.12 to avoid duplicates (latest version)
       - name: Upload build artifacts
