@@ -117,7 +117,7 @@ jobs:
   # Conditional: Only runs when pushing to main branch (production deployments)
   deploy:
     # Only run deployment on main branch pushes (not on PRs or develop branch)
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
 
     runs-on: ubuntu-latest
 
