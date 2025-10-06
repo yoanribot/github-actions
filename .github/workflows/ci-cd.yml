@@ -1,0 +1,214 @@
+name: CI/CD
+
+# Workflow triggers
+on:
+  # Trigger on pushes to main and develop branches
+  push:
+    branches: [main, develop]
+  # Trigger on pull requests targeting main and develop branches
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize]
+  # Allow manual triggering of workflow from GitHub UI
+  workflow_dispatch:
+
+# Permissions required for deployment (only used when deploying)
+permissions:
+  contents: read      # Read repository contents
+  pages: write        # Write to GitHub Pages (deployment only)
+  id-token: write     # Generate OIDC tokens (deployment only)
+
+# Concurrency control to cancel redundant builds
+# This prevents multiple CI runs for the same PR/branch, saving resources
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Quality Checks & Testing
+  # Purpose: Run comprehensive tests across multiple Node.js versions to ensure compatibility
+  test:
+    runs-on: ubuntu-latest
+
+    # Strategy: Matrix build to test on multiple Node.js versions
+    # This ensures the application works on different Node.js environments
+    # Note: Using Node 20.19+ and 22.12+ as required by Vite 7.1.9
+    strategy:
+      matrix:
+        node-version: ['20.19', '22.12']  # Minimum versions required by Vite 7
+
+    steps:
+      # Step 1: Get the repository code
+      # Action: actions/checkout@v4 - Downloads repository content to the runner
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      # Action: actions/setup-node@v4 - Installs specified Node.js version from matrix
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # Step 3: Set up pnpm package manager
+      # Action: pnpm/action-setup@v4 - Installs pnpm for faster, more efficient package management
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # Step 4: Configure pnpm cache location
+      # Command: Get pnpm store path and save it as environment variable for caching
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      # Step 5: Set up dependency caching
+      # Action: actions/cache@v4 - Cache pnpm store to speed up subsequent runs
+      # Cache key is based on OS and lockfile hash, ensuring cache invalidation when dependencies change
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # Step 6: Install project dependencies
+      # Command: Install dependencies with fallback for lockfile compatibility issues
+      # Try frozen lockfile first, fall back to regular install if incompatible
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      # Step 7: TypeScript type checking
+      # Command: Run TypeScript compiler to check for type errors without emitting files
+      - name: Run TypeScript type check
+        run: npx tsc --noEmit
+
+      # Step 8: Code linting
+      # Command: Run ESLint to check for code quality issues and style violations
+      - name: Run linter
+        run: pnpm run lint
+
+      # Step 9: Run test suite
+      # Command: Execute Jest tests to ensure functionality works correctly
+      - name: Run tests
+        run: pnpm run test
+
+      # Step 10: Build application
+      # Command: Create production build to verify the app can be built successfully
+      - name: Build application
+        run: pnpm run build
+
+      # Step 11: Upload build artifacts
+      # Action: actions/upload-artifact@v4 - Save build output for potential deployment
+      # Conditional: Only upload artifacts from Node 22.12 to avoid duplicates (latest version)
+      - name: Upload build artifacts
+        if: matrix.node-version == '22.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: dist/              # Upload the built application
+          retention-days: 7        # Keep artifacts for 7 days
+
+  # Job 2: Deploy to GitHub Pages
+  # Purpose: Deploy the built application to GitHub Pages (only on main branch)
+  # Conditional: Only runs when pushing to main branch (production deployments)
+  deploy:
+    # Only run deployment on main branch pushes (not on PRs or develop branch)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    runs-on: ubuntu-latest
+
+    # Dependency: Wait for test job to complete successfully
+    # This ensures we only deploy if all quality checks pass
+    needs: test
+
+    # Environment configuration for deployment tracking
+    environment:
+      name: github-pages                              # Environment name
+      url: ${{ steps.deployment.outputs.page_url }}   # Deployment URL from deploy action
+
+    # Concurrency control for deployments
+    # Prevent multiple deployments from running simultaneously
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false     # Don't cancel in-progress deployments
+
+    steps:
+      # Step 1: Get the repository code
+      # Action: actions/checkout@v4 - Downloads repository content for deployment build
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      # Action: actions/setup-node@v4 - Installs Node.js 20.19+ for Vite 7 compatibility
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19'  # Minimum version required by Vite 7
+
+      # Step 3: Set up pnpm package manager
+      # Action: pnpm/action-setup@v4 - Installs pnpm for efficient package management
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # Step 4: Configure pnpm cache location
+      # Command: Get pnpm store path and save it as environment variable for caching
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      # Step 5: Set up dependency caching
+      # Action: actions/cache@v4 - Cache pnpm store to speed up deployment builds
+      # Cache key includes lockfile hash to invalidate when dependencies change
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # Step 6: Install project dependencies
+      # Command: Install dependencies with fallback for lockfile compatibility issues
+      # Try frozen lockfile first, fall back to regular install if incompatible
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      # Step 7: Build application for production deployment
+      # Command: Create optimized production build with proper base path for GitHub Pages
+      # This build is specifically for deployment (different from test builds)
+      - name: Build application for deployment
+        run: pnpm run build
+        env:
+          # Configure base path for GitHub Pages deployment
+          # This ensures assets are loaded correctly from the subdirectory
+          VITE_BASE_PATH: /github-actions/
+
+      # Step 8: Configure GitHub Pages
+      # Action: actions/configure-pages@v4 - Set up Pages configuration
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      # Step 9: Upload build artifacts to Pages
+      # Action: actions/upload-pages-artifact@v3 - Upload build folder for deployment
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist  # Upload the built application from dist folder
+
+      # Step 10: Deploy to GitHub Pages
+      # Action: actions/deploy-pages@v4 - Deploy uploaded artifacts to GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Echo deployment success
+        run: |
+          echo "✅ Deployed successfully!"
+          echo "🔗 Check your deployed site at: ${{ steps.deployment.outputs.page_url }}"
