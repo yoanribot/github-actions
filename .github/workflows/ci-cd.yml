@@ -98,8 +98,13 @@ jobs:
 
       # Step 10: Build application
       # Command: Create production build to verify the app can be built successfully
+      # Build with GitHub Pages configuration for potential deployment
       - name: Build application
         run: pnpm run build
+        env:
+          # Configure base path for GitHub Pages deployment (if deploying)
+          # This ensures the build is ready for deployment without rebuilding
+          VITE_BASE_PATH: /github-actions/
 
       # Step 11: Upload build artifacts
       # Action: actions/upload-artifact@v4 - Save build output for potential deployment
@@ -137,77 +142,36 @@ jobs:
       cancel-in-progress: false     # Don't cancel in-progress deployments
 
     steps:
-      # Step 1: Get the repository code
-      # Action: actions/checkout@v4 - Downloads repository content for deployment build
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Step 2: Set up Node.js environment
-      # Action: actions/setup-node@v4 - Installs Node.js 20.19+ for Vite 7 compatibility
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      # Step 1: Download build artifacts from test job
+      # Action: actions/download-artifact@v4 - Reuse artifacts instead of rebuilding
+      # This saves significant time by not repeating the entire build process
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
-          node-version: '20.19'  # Minimum version required by Vite 7
+          name: build-files
+          path: dist/
 
-      # Step 3: Set up pnpm package manager
-      # Action: pnpm/action-setup@v4 - Installs pnpm for efficient package management
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
-      # Step 4: Configure pnpm cache location
-      # Command: Get pnpm store path and save it as environment variable for caching
-      - name: Get pnpm store directory
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
-
-      # Step 5: Set up dependency caching
-      # Action: actions/cache@v4 - Cache pnpm store to speed up deployment builds
-      # Cache key includes lockfile hash to invalidate when dependencies change
-      - name: Setup pnpm cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      # Step 6: Install project dependencies
-      # Command: Install dependencies with fallback for lockfile compatibility issues
-      # Try frozen lockfile first, fall back to regular install if incompatible
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile || pnpm install
-
-      # Step 7: Build application for production deployment
-      # Command: Create optimized production build with proper base path for GitHub Pages
-      # This build is specifically for deployment (different from test builds)
-      - name: Build application for deployment
-        run: pnpm run build
-        env:
-          # Configure base path for GitHub Pages deployment
-          # This ensures assets are loaded correctly from the subdirectory
-          VITE_BASE_PATH: /github-actions/
-
-      # Step 8: Configure GitHub Pages
+      # Step 2: Configure GitHub Pages
       # Action: actions/configure-pages@v4 - Set up Pages configuration
+      # Can run immediately since we have the build artifacts
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      # Step 9: Upload build artifacts to Pages
-      # Action: actions/upload-pages-artifact@v3 - Upload build folder for deployment
+      # Step 3: Upload build artifacts to Pages
+      # Action: actions/upload-pages-artifact@v3 - Upload existing build folder for deployment
       - name: Upload to GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist  # Upload the built application from dist folder
+          path: dist  # Upload the pre-built application
 
-      # Step 10: Deploy to GitHub Pages
+      # Step 4: Deploy to GitHub Pages
       # Action: actions/deploy-pages@v4 - Deploy uploaded artifacts to GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
 
+      # Step 5: Echo deployment success
+      # Command: Provide feedback about successful deployment
       - name: Echo deployment success
         run: |
           echo "✅ Deployed successfully!"

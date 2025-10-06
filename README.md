@@ -84,7 +84,7 @@ export default defineConfig([
   - Activate:
     - Require status checks to pass
     - Require branches to be up to date before merging
-- [TODO] Run actions in parallel
+- Run actions in parallel
 - [TODO] Add E2E or integrations tests
   - Playwright
   - Cypress: [Ex](https://youtu.be/sIhm4YOMK6Q?t=2827)

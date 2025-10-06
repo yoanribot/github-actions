@@ -1,0 +1,214 @@
+name: CI/CD (Optimized)
+
+# Workflow triggers
+on:
+  # Trigger on pushes to main and develop branches
+  push:
+    branches: [main, develop]
+  # Trigger on pull requests targeting main and develop branches
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize]
+  # Allow manual triggering of workflow from GitHub UI
+  workflow_dispatch:
+
+# Permissions required for deployment (only used when deploying)
+permissions:
+  contents: read      # Read repository contents
+  pages: write        # Write to GitHub Pages (deployment only)
+  id-token: write     # Generate OIDC tokens (deployment only)
+
+# Concurrency control to cancel redundant builds
+# This prevents multiple CI runs for the same PR/branch, saving resources
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Quality Checks (TypeScript, Linting)
+  # Purpose: Fast feedback on code quality without heavy operations
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Get the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment (single version for speed)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19'
+
+      # Step 3: Set up pnpm package manager
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # Step 4: Configure pnpm cache
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      # Step 5: Install dependencies
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      # Step 6: TypeScript type checking (parallel with linting)
+      - name: Run TypeScript type check
+        run: npx tsc --noEmit
+
+      # Step 7: Code linting (can run independently)
+      - name: Run linter
+        run: pnpm run lint
+
+  # Job 2: Testing
+  # Purpose: Run comprehensive tests across multiple Node.js versions
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['20.19', '22.12']  # Test compatibility
+
+    steps:
+      # Step 1: Get the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # Step 3: Set up pnpm package manager
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # Step 4: Configure pnpm cache
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      # Step 5: Install dependencies
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      # Step 6: Run test suite
+      - name: Run tests
+        run: pnpm run test
+
+  # Job 3: Build
+  # Purpose: Create production build for deployment
+  build:
+    runs-on: ubuntu-latest
+    # Run in parallel with tests (independent operations)
+    steps:
+      # Step 1: Get the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19'
+
+      # Step 3: Set up pnpm package manager
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # Step 4: Configure pnpm cache
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      # Step 5: Install dependencies
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      # Step 6: Build application for production
+      - name: Build application
+        run: pnpm run build
+        env:
+          VITE_BASE_PATH: /github-actions/
+
+      # Step 7: Upload build artifacts
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: dist/
+          retention-days: 7
+
+  # Job 4: Deploy to GitHub Pages
+  # Purpose: Deploy the built application (only on main branch)
+  deploy:
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    # Wait for all quality checks to pass before deploying
+    needs: [quality, test, build]
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+
+    steps:
+      # Step 1: Download build artifacts
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-files
+          path: dist/
+
+      # Step 2: Configure GitHub Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      # Step 3: Upload to GitHub Pages
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      # Step 4: Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      # Step 5: Echo deployment success
+      - name: Echo deployment success
+        run: |
+          echo "✅ Deployed successfully!"
+          echo "🔗 Check your deployed site at: ${{ steps.deployment.outputs.page_url }}"
