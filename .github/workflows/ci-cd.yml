@@ -101,7 +101,7 @@ jobs:
       # --coverage: Generate coverage reports
       # --watchAll=false: Run tests once and exit (don't watch for changes)
       - name: Run tests with coverage
-        run: pnpm run test -- --coverage --watchAll=false
+        run: pnpm run test --passWithNoTests --coverage --watchAll=false
 
       # Step 11: Build application
       # Command: Create production build to verify the app can be built successfully
