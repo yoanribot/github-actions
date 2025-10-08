@@ -26,7 +26,11 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */
-    baseURL: "http://localhost:4173",
+    // In CI, use the GitHub Pages base path on preview server (port 4173)
+    // Locally, use dev server (port 5173) with root path
+    baseURL: process.env.CI
+      ? "http://localhost:4173/github-actions"
+      : "http://localhost:5173",
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: "on-first-retry",
@@ -72,9 +76,10 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: "pnpm preview",
-    url: "http://localhost:4173",
+    command: process.env.CI ? "pnpm preview" : "pnpm dev",
+    url: process.env.CI ? "http://localhost:4173" : "http://localhost:5173",
     reuseExistingServer: !!process.env.CI, // In CI, reuse the server started by the workflow
     timeout: 120_000,
+    env: process.env.CI ? { VITE_BASE_PATH: "/github-actions/" } : {},
   },
 });
