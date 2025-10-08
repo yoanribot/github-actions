@@ -223,14 +223,97 @@ jobs:
           path: dist/
           retention-days: 7
 
-  # Job 4: Deploy to GitHub Pages
+  # Job 4: End-to-End Testing with Playwright
+  # Purpose: Run E2E tests to ensure the application works correctly from user perspective
+  e2e:
+    runs-on: ubuntu-latest
+
+    # Dependency: Wait for build job to complete so we can test the built application
+    needs: build
+
+    steps:
+      # Step 1: Get the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19'
+
+      # Step 3: Set up pnpm package manager
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      # Step 4: Configure pnpm cache
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      # Step 5: Install dependencies
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      # Step 6: Install Playwright browsers
+      # Action: Install Playwright and required browser binaries
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+
+      # Step 7: Download build artifacts from build job
+      # Action: Get the production build to test against
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-files
+          path: dist/
+
+      # Step 8: Start preview server for E2E testing
+      # Command: Serve the built application for testing
+      - name: Start preview server
+        run: pnpm run preview &
+        env:
+          # Serve the application in background for testing
+          CI: true
+
+      # Step 9: Wait for server to be ready
+      # Command: Ensure the preview server is running before running tests
+      - name: Wait for server
+        run: npx wait-on http://localhost:5173 --timeout 30000
+
+      # Step 10: Run Playwright E2E tests
+      # Command: Execute end-to-end tests against the running application
+      - name: Run Playwright tests
+        run: pnpm test:e2e
+
+      # Step 11: Upload Playwright test results
+      # Action: Save test reports and screenshots for debugging failures
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if tests fail
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+  # Job 5: Deploy to GitHub Pages
   # Purpose: Deploy the built application (only on main branch)
   deploy:
     if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
-    # Wait for all quality checks to pass before deploying
-    needs: [quality, test, build]
+    # Wait for all quality checks AND E2E tests to pass before deploying
+    # This ensures we never deploy broken code to production
+    needs: [quality, test, build, e2e]
 
     environment:
       name: github-pages
