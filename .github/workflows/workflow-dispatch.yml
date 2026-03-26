@@ -1,0 +1,25 @@
+name: Workflow Dispatch Env Check
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: "Environment to test"
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - stage
+          - exttest
+          - prod
+
+jobs:
+  show-values:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target_env }}
+    steps:
+      - name: Show selected values
+        run: |
+          echo "Selected environment: ${{ inputs.target_env }}"
+          echo "MY_VARIABLE value: ${{ vars.MY_VARIABLE }}"
